@@ -1,0 +1,4 @@
+Flask>=3.1,<4.0
+yt-dlp>=2025.12.08
+curl-cffi>=0.13.0
+gunicorn>=23.0.0

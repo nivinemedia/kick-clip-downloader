@@ -1,0 +1,9 @@
+.git
+.gitignore
+.venv
+.venv312
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.mp4

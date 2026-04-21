@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Kick Clip Downloader</title>
+    <meta
+      name="description"
+      content="Baixe clips publicos da Kick em MP4 H.264 com um link direto."
+    >
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  </head>
+  <body>
+    <div class="glow glow-left"></div>
+    <div class="glow glow-right"></div>
+
+    <main class="page">
+      <section class="hero">
+        <p class="eyebrow">Kick Clip Downloader</p>
+        <h1>Baixe clips da Kick em <span>MP4 H.264</span></h1>
+        <p class="intro">
+          Cole um link publico de clip da Kick e o site prepara um arquivo
+          final em <strong>.mp4</strong> com video em <strong>H.264</strong>.
+        </p>
+      </section>
+
+      <section class="card">
+        <form id="download-form" class="download-form">
+          <label for="url">Link do clip</label>
+          <div class="input-row">
+            <input
+              id="url"
+              name="url"
+              type="url"
+              required
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="https://kick.com/minerva/clips/clip_01KPBW5GKKEC9RSF84E27CHV16"
+            >
+            <button id="submit-button" type="submit">Baixar</button>
+          </div>
+          <p class="hint">
+            Funciona com clips publicos da Kick. O processamento pode levar alguns segundos.
+          </p>
+        </form>
+
+        <div id="status" class="status" data-tone="idle" aria-live="polite">
+          Pronto para receber um link.
+        </div>
+      </section>
+
+      <section class="grid">
+        <article class="mini-card">
+          <h2>Formato final</h2>
+          <p>Saida em arquivo <strong>.mp4</strong> com encode em <strong>H.264</strong>.</p>
+        </article>
+
+        <article class="mini-card">
+          <h2>Fluxo simples</h2>
+          <p>Colou o link, esperou o processamento e o download comeca no navegador.</p>
+        </article>
+
+        <article class="mini-card">
+          <h2>Escopo</h2>
+          <p>Suporte focado em clips publicos do tipo <code>/clips/clip_...</code>.</p>
+        </article>
+      </section>
+    </main>
+
+    <script>
+      const form = document.getElementById("download-form");
+      const urlInput = document.getElementById("url");
+      const submitButton = document.getElementById("submit-button");
+      const statusBox = document.getElementById("status");
+
+      function setStatus(message, tone) {
+        statusBox.textContent = message;
+        statusBox.dataset.tone = tone;
+      }
+
+      function getFilename(dispositionHeader) {
+        if (!dispositionHeader) {
+          return "kick-clip.mp4";
+        }
+
+        const utf8Match = dispositionHeader.match(/filename\\*=UTF-8''([^;]+)/i);
+        if (utf8Match) {
+          return decodeURIComponent(utf8Match[1]);
+        }
+
+        const plainMatch = dispositionHeader.match(/filename="?([^"]+)"?/i);
+        return plainMatch ? plainMatch[1] : "kick-clip.mp4";
+      }
+
+      async function startDownload(blob, filename) {
+        const objectUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = objectUrl;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(objectUrl);
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const url = urlInput.value.trim();
+        if (!url) {
+          setStatus("Cole um link de clip da Kick antes de continuar.", "error");
+          return;
+        }
+
+        submitButton.disabled = true;
+        submitButton.textContent = "Preparando...";
+        setStatus("Baixando o clip da Kick e convertendo para MP4 H.264...", "loading");
+
+        try {
+          const response = await fetch("/api/download", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url }),
+          });
+
+          const contentType = response.headers.get("content-type") || "";
+          if (!response.ok) {
+            if (contentType.includes("application/json")) {
+              const data = await response.json();
+              throw new Error(data.error || "Nao foi possivel processar o clip.");
+            }
+            throw new Error("Nao foi possivel processar o clip.");
+          }
+
+          const blob = await response.blob();
+          const filename = getFilename(response.headers.get("content-disposition"));
+          await startDownload(blob, filename);
+          setStatus("Download iniciado. Se o navegador bloqueou, tente novamente.", "success");
+        } catch (error) {
+          setStatus(error.message || "Falha ao baixar o clip.", "error");
+        } finally {
+          submitButton.disabled = false;
+          submitButton.textContent = "Baixar";
+        }
+      });
+    </script>
+  </body>
+</html>
