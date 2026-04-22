@@ -110,14 +110,18 @@ def cleanup_expired_jobs() -> None:
         release_job(job_id)
 
 
-def create_job() -> dict:
+def create_job(
+    status: str = "queued",
+    progress: int = 0,
+    message: str = "Preparando o download...",
+) -> dict:
     cleanup_expired_jobs()
     job_id = uuid.uuid4().hex
     job = {
         "id": job_id,
-        "status": "queued",
-        "progress": 0,
-        "message": "Preparando o download...",
+        "status": status,
+        "progress": progress,
+        "message": message,
         "created_at": current_timestamp(),
         "updated_at": current_timestamp(),
         "work_dir": None,
@@ -422,6 +426,15 @@ def extract_youtube_info_with_fallbacks(source_url: str, base_options: dict, dow
     raise last_error
 
 
+def get_youtube_video_selector() -> str:
+    return (
+        "bestvideo[vcodec~='^(avc1|h264)'][ext=mp4]+bestaudio[ext=m4a]/"
+        "bestvideo[vcodec~='^(avc1|h264)'][ext=mp4]+bestaudio/"
+        "bestvideo[ext=mp4]+bestaudio[ext=m4a]/"
+        "bestvideo*+bestaudio/best"
+    )
+
+
 def build_download_progress_hook(job_id: str, message: str, progress_start: int, progress_end: int):
     def hook(progress: dict) -> None:
         status = progress.get("status")
@@ -575,8 +588,8 @@ def download_youtube_source(
     if preferences["download_mode"] == "video":
         base_options.update(
             {
-                "format": "bestvideo*+bestaudio/best",
-                "merge_output_format": "mkv",
+                "format": get_youtube_video_selector(),
+                "merge_output_format": "mp4",
             }
         )
     else:
@@ -934,18 +947,42 @@ def get_mimetype_for_extension(extension: str) -> str:
     return "application/octet-stream"
 
 
-def run_download_job(job_id: str, payload: dict) -> None:
+def build_download_task(payload: dict) -> dict:
+    source = parse_media_url(payload.get("url"))
+    task = {"source": source}
+
+    if source["platform"] == "kick":
+        start_time, end_time = parse_vod_range(payload, source)
+        task["start_time"] = start_time
+        task["end_time"] = end_time
+    else:
+        task["preferences"] = parse_youtube_preferences(payload)
+
+    return task
+
+
+def get_initial_job_message(task: dict) -> str:
+    source = task["source"]
+    if source["platform"] == "kick" and source["kind"] == "vod":
+        return "Conectando ao VOD da Kick..."
+    if source["platform"] == "kick":
+        return "Conectando ao clip da Kick..."
+    return "Conectando ao YouTube..."
+
+
+def run_download_job(job_id: str, task: dict) -> None:
     work_dir = None
 
     try:
-        update_job(job_id, status="running", progress=2, message="Analisando o link...")
-        source = parse_media_url(payload.get("url"))
+        source = task["source"]
+        update_job(job_id, status="running", progress=6, message=get_initial_job_message(task))
         work_dir = Path(tempfile.mkdtemp(prefix=f"{source['platform']}-{source['id']}-"))
-        update_job(job_id, work_dir=str(work_dir), progress=6)
+        update_job(job_id, work_dir=str(work_dir), progress=9)
 
         if source["platform"] == "kick":
-            start_time, end_time = parse_vod_range(payload, source)
-            set_job_progress(job_id, 8, "Preparando o download da Kick...")
+            start_time = task["start_time"]
+            end_time = task["end_time"]
+            set_job_progress(job_id, 12, "Baixando da Kick...")
             info, source_file = download_kick_source(
                 source,
                 work_dir,
@@ -958,8 +995,8 @@ def run_download_job(job_id: str, payload: dict) -> None:
             file_to_send = prepare_video_output_file(source_file, output_path, job_id=job_id)
             mimetype = get_mimetype_for_extension(".mp4")
         else:
-            preferences = parse_youtube_preferences(payload)
-            set_job_progress(job_id, 8, "Preparando o download do YouTube...")
+            preferences = task["preferences"]
+            set_job_progress(job_id, 12, "Buscando a melhor qualidade no YouTube...")
             info, source_file = download_youtube_source(
                 source,
                 work_dir,
@@ -1053,16 +1090,16 @@ def vod_info():
 def download_media():
     payload = request.get_json(silent=True) or {}
     try:
-        source = parse_media_url(payload.get("url"))
-        if source["platform"] == "kick":
-            parse_vod_range(payload, source)
-        else:
-            parse_youtube_preferences(payload)
+        task = build_download_task(payload)
     except DownloadError as exc:
         return jsonify({"error": str(exc)}), 400
 
-    job = create_job()
-    threading.Thread(target=run_download_job, args=(job["id"], payload), daemon=True).start()
+    job = create_job(
+        status="running",
+        progress=4,
+        message=get_initial_job_message(task),
+    )
+    threading.Thread(target=run_download_job, args=(job["id"], task), daemon=True).start()
     return jsonify(serialize_job(job)), 202
 
 

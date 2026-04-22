@@ -252,6 +252,7 @@
       let vodDurationSeconds = 0;
       let activeJobId = "";
       let jobPollTimer = null;
+      let submitStartedAt = 0;
 
       function setStatus(message, tone) {
         statusBox.textContent = message || "";
@@ -498,6 +499,7 @@
           jobPollTimer = null;
         }
         activeJobId = "";
+        submitStartedAt = 0;
       }
 
       async function pollDownloadJob() {
@@ -541,7 +543,9 @@
           }
 
           updateProgressPanel(data.progress, data.message, "loading");
-          jobPollTimer = window.setTimeout(pollDownloadJob, 700);
+          const elapsed = submitStartedAt ? Date.now() - submitStartedAt : 0;
+          const nextDelay = data.progress < 18 || elapsed < 6000 ? 250 : 550;
+          jobPollTimer = window.setTimeout(pollDownloadJob, nextDelay);
         } catch (error) {
           updateProgressPanel(0, error.message || "Falha ao acompanhar o download.", "error");
           setStatus(error.message || "Falha ao acompanhar o download.", "error");
@@ -722,8 +726,9 @@
       startSlider.addEventListener("input", () => applySliderState("start"));
       endSlider.addEventListener("input", () => applySliderState("end"));
       urlInput.addEventListener("input", () => syncSourcePanels(false));
-      urlInput.addEventListener("change", () => syncSourcePanels(true));
-      urlInput.addEventListener("blur", () => syncSourcePanels(true));
+      urlInput.addEventListener("paste", () => {
+        window.setTimeout(() => syncSourcePanels(true), 0);
+      });
 
       document.querySelectorAll('input[name="youtube-mode"]').forEach((input) => {
         input.addEventListener("change", () => syncYoutubeMode());
@@ -770,10 +775,12 @@
         }
 
         stopJobPolling();
+        abortInfoLookup();
+        submitStartedAt = Date.now();
         submitButton.disabled = true;
-        btnLabel.textContent = "Preparando";
-        updateProgressPanel(0, "Preparando o download...", "loading");
-        setStatus("Montando a tarefa de download...", "loading");
+        btnLabel.textContent = "Baixando";
+        updateProgressPanel(4, "Conectando à plataforma...", "loading");
+        setStatus("Iniciando download...", "loading");
 
         try {
           const response = await fetch("/api/download", {
@@ -795,7 +802,7 @@
 
           activeJobId = data.id;
           updateProgressPanel(data.progress, data.message || "Download iniciado...", "loading");
-          setStatus("Download em andamento...", "loading");
+          setStatus(data.message || "Download em andamento...", "loading");
           pollDownloadJob();
         } catch (error) {
           updateProgressPanel(0, error.message || "Falha ao iniciar o download.", "error");
