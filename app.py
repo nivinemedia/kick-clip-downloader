@@ -348,13 +348,12 @@ def merge_ydl_options(base: dict, extra: dict) -> dict:
 def get_youtube_ydl_fallbacks() -> list[dict]:
     common = {
         "source_address": "0.0.0.0",
-        "socket_timeout": 20,
-        "retries": 5,
-        "fragment_retries": 5,
-        "extractor_retries": 5,
+        "socket_timeout": 10,
+        "retries": 2,
+        "fragment_retries": 2,
+        "extractor_retries": 2,
     }
     return [
-        {},
         common,
         merge_ydl_options(
             common,
@@ -406,9 +405,9 @@ def build_youtube_error_message(action: str, exc: Exception) -> str:
 def extract_youtube_info_with_fallbacks(source_url: str, base_options: dict, download: bool) -> dict:
     last_error = None
 
-    for extra in get_youtube_ydl_fallbacks():
+    for index, extra in enumerate(get_youtube_ydl_fallbacks()):
         ydl_options = merge_ydl_options(base_options, extra)
-        attempts = 3 if not extra else 2
+        attempts = 2 if index == 0 else 1
 
         for attempt in range(1, attempts + 1):
             try:
@@ -417,7 +416,7 @@ def extract_youtube_info_with_fallbacks(source_url: str, base_options: dict, dow
             except Exception as exc:  # pragma: no cover - depends on external service
                 last_error = exc
                 if attempt < attempts and is_transient_youtube_error(exc):
-                    time.sleep(min(attempt, 2))
+                    time.sleep(min(attempt, 1))
                     continue
                 break
 
