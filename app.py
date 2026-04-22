@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import re
@@ -62,6 +63,18 @@ AUDIO_LABEL_PREFIXES = {
     "sfx": "[SFX] ",
     "music": "[MUSIC] ",
 }
+YOUTUBE_TRANSIENT_ERROR_MARKERS = (
+    "unexpected_eof_while_reading",
+    "eof occurred in violation of protocol",
+    "unable to download api page",
+    "ssl:",
+    "transporterror",
+    "connection reset",
+    "remote end closed connection",
+    "timed out",
+    "temporarily unavailable",
+    "bad handshake",
+)
 DOWNLOAD_JOBS: dict[str, dict] = {}
 DOWNLOAD_JOBS_LOCK = threading.Lock()
 JOB_TTL_SECONDS = 60 * 60
@@ -318,6 +331,97 @@ def parse_youtube_preferences(payload: dict) -> dict:
     }
 
 
+def merge_ydl_options(base: dict, extra: dict) -> dict:
+    merged = copy.deepcopy(base)
+    for key, value in extra.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = {**merged[key], **value}
+        else:
+            merged[key] = copy.deepcopy(value)
+    return merged
+
+
+def get_youtube_ydl_fallbacks() -> list[dict]:
+    common = {
+        "source_address": "0.0.0.0",
+        "socket_timeout": 20,
+        "retries": 5,
+        "fragment_retries": 5,
+        "extractor_retries": 5,
+    }
+    return [
+        {},
+        common,
+        merge_ydl_options(
+            common,
+            {
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["android"],
+                    }
+                },
+            },
+        ),
+        merge_ydl_options(
+            common,
+            {
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["ios"],
+                    }
+                },
+            },
+        ),
+        merge_ydl_options(
+            common,
+            {
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["web"],
+                    }
+                },
+            },
+        ),
+    ]
+
+
+def is_transient_youtube_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(marker in message for marker in YOUTUBE_TRANSIENT_ERROR_MARKERS)
+
+
+def build_youtube_error_message(action: str, exc: Exception) -> str:
+    if is_transient_youtube_error(exc):
+        return (
+            f"Nao foi possivel {action} do YouTube agora. "
+            "O YouTube respondeu de forma instavel. Tente novamente em alguns segundos."
+        )
+    return f"Nao foi possivel {action} do YouTube: {exc}"
+
+
+def extract_youtube_info_with_fallbacks(source_url: str, base_options: dict, download: bool) -> dict:
+    last_error = None
+
+    for extra in get_youtube_ydl_fallbacks():
+        ydl_options = merge_ydl_options(base_options, extra)
+        attempts = 3 if not extra else 2
+
+        for attempt in range(1, attempts + 1):
+            try:
+                with YoutubeDL(ydl_options) as ydl:
+                    return ydl.extract_info(source_url, download=download)
+            except Exception as exc:  # pragma: no cover - depends on external service
+                last_error = exc
+                if attempt < attempts and is_transient_youtube_error(exc):
+                    time.sleep(min(attempt, 2))
+                    continue
+                break
+
+    if last_error is None:
+        raise RuntimeError("Falha desconhecida ao ler o YouTube.")
+    raise last_error
+
+
 def build_download_progress_hook(job_id: str, message: str, progress_start: int, progress_end: int):
     def hook(progress: dict) -> None:
         status = progress.get("status")
@@ -366,12 +470,19 @@ def build_ydl_options(source: dict, work_dir: Path | None = None) -> dict:
 
 
 def fetch_media_metadata(source: dict) -> dict:
-    try:
-        with YoutubeDL(build_ydl_options(source)) as ydl:
-            info = ydl.extract_info(source["url"], download=False)
-    except Exception as exc:  # pragma: no cover - depends on external service
-        platform_label = "Kick" if source["platform"] == "kick" else "YouTube"
-        raise DownloadError(f"Nao foi possivel ler os dados do {platform_label}: {exc}") from exc
+    options = build_ydl_options(source)
+
+    if source["platform"] == "youtube":
+        try:
+            info = extract_youtube_info_with_fallbacks(source["url"], options, download=False)
+        except Exception as exc:  # pragma: no cover - depends on external service
+            raise DownloadError(build_youtube_error_message("ler os dados", exc)) from exc
+    else:
+        try:
+            with YoutubeDL(options) as ydl:
+                info = ydl.extract_info(source["url"], download=False)
+        except Exception as exc:  # pragma: no cover - depends on external service
+            raise DownloadError(f"Nao foi possivel ler os dados do Kick: {exc}") from exc
 
     if info.get("_type") == "playlist":
         raise DownloadError("Esse link parece ser uma playlist. Cole o link de um unico video.")
@@ -456,30 +567,29 @@ def download_youtube_source(
     preferences: dict,
     job_id: str | None = None,
 ) -> tuple[dict, Path]:
-    ydl_options = build_ydl_options(source, work_dir)
+    base_options = build_ydl_options(source, work_dir)
     if job_id:
-        ydl_options["progress_hooks"] = [
+        base_options["progress_hooks"] = [
             build_download_progress_hook(job_id, "Baixando do YouTube...", 10, 72)
         ]
     if preferences["download_mode"] == "video":
-        ydl_options.update(
+        base_options.update(
             {
                 "format": "bestvideo*+bestaudio/best",
                 "merge_output_format": "mkv",
             }
         )
     else:
-        ydl_options.update(
+        base_options.update(
             {
                 "format": "bestaudio/best",
             }
         )
 
     try:
-        with YoutubeDL(ydl_options) as ydl:
-            info = ydl.extract_info(source["url"], download=True)
+        info = extract_youtube_info_with_fallbacks(source["url"], base_options, download=True)
     except Exception as exc:  # pragma: no cover - depends on external service
-        raise DownloadError(f"Nao foi possivel baixar a midia do YouTube: {exc}") from exc
+        raise DownloadError(build_youtube_error_message("baixar a midia", exc)) from exc
 
     return info, locate_downloaded_file(work_dir, info)
 
