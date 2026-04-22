@@ -245,6 +245,8 @@
       let infoLookupTimer = null;
       let infoController = null;
       let infoRequestId = 0;
+      let infoAbortReason = "";
+      let infoFetchTimeout = null;
       let loadedSourceUrl = "";
       let sourceInfoReady = false;
       let vodDurationSeconds = 0;
@@ -395,7 +397,7 @@
         youtubePanel.hidden = false;
         youtubePanel.dataset.state = "loading";
         youtubeMeta.textContent = "Lendo os dados do vídeo do YouTube...";
-        setHelper('Quando os dados carregarem, você escolhe se quer vídeo + áudio em <code>MP4 H.264</code> ou só áudio em <code>MP3</code>/<code>WAV</code>.');
+        setHelper('Você já pode escolher o formato do YouTube. Se o título e a duração demorarem, o download ainda pode funcionar normalmente.');
       }
 
       function syncYoutubeMode() {
@@ -459,7 +461,9 @@
 
       function abortInfoLookup() {
         window.clearTimeout(infoLookupTimer);
+        window.clearTimeout(infoFetchTimeout);
         if (infoController) {
+          infoAbortReason = "manual";
           infoController.abort();
           infoController = null;
         }
@@ -572,7 +576,18 @@
 
         const currentRequestId = ++infoRequestId;
         infoController = new AbortController();
+        infoAbortReason = "";
         sourceInfoReady = false;
+
+        window.clearTimeout(infoFetchTimeout);
+        if (sourceKind === "youtube") {
+          infoFetchTimeout = window.setTimeout(() => {
+            if (infoController) {
+              infoAbortReason = "timeout";
+              infoController.abort();
+            }
+          }, 6000);
+        }
 
         if (sourceKind === "kick_vod") {
           showVodLoading();
@@ -612,6 +627,18 @@
           }
         } catch (error) {
           if (error.name === "AbortError") {
+            if (infoAbortReason === "manual") {
+              return;
+            }
+
+            if (sourceKind === "youtube") {
+              youtubePanel.hidden = false;
+              youtubePanel.dataset.state = "ready";
+              youtubeMeta.textContent = "Os detalhes demoraram para carregar, mas você já pode baixar normalmente.";
+              youtubeDuration.textContent = "--:--";
+              setHelper('Mesmo sem o título e a duração do YouTube, o download já está liberado. Escolhe o formato e pode baixar.');
+              setStatus("Os detalhes do YouTube demoraram, mas o download foi liberado.", "loading");
+            }
             return;
           }
 
@@ -622,16 +649,19 @@
             vodPanel.dataset.state = "error";
             vodMeta.textContent = error.message || "Não consegui ler esse VOD agora.";
             vodTotal.textContent = "--:--";
+            setStatus(error.message || "Falha ao ler os dados do VOD.", "error");
           } else {
             youtubePanel.hidden = false;
-            youtubePanel.dataset.state = "error";
-            youtubeMeta.textContent = error.message || "Não consegui ler esse vídeo do YouTube agora.";
+            youtubePanel.dataset.state = "ready";
+            youtubeMeta.textContent = "Não consegui carregar o título e a duração agora, mas você já pode baixar.";
             youtubeDuration.textContent = "--:--";
+            setStatus("Os detalhes do YouTube não carregaram, mas o download foi liberado mesmo assim.", "loading");
           }
           setHelper('Se o link estiver certo e ainda falhar, tenta colar novamente o endereço completo da mídia.');
-          setStatus(error.message || "Falha ao ler os dados da mídia.", "error");
         } finally {
+          window.clearTimeout(infoFetchTimeout);
           infoController = null;
+          infoAbortReason = "";
         }
       }
 
@@ -717,11 +747,6 @@
 
         if (sourceKind === "kick_vod" && (!sourceInfoReady || !startTimeInput.value || !endTimeInput.value)) {
           setStatus("Espera a duração do VOD carregar e escolha o trecho na barra.", "error");
-          return;
-        }
-
-        if (sourceKind === "youtube" && !sourceInfoReady) {
-          setStatus("Espera os dados do vídeo do YouTube carregarem para escolher o formato.", "error");
           return;
         }
 
