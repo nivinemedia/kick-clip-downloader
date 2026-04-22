@@ -183,6 +183,11 @@
               </div>
 
               <p id="progress-note" class="progress-note">A barra acompanha o download e a conversão do arquivo.</p>
+
+              <div id="download-ready-actions" class="download-ready-actions" hidden>
+                <a id="download-ready-link" class="download-ready-link" href="#" download>Baixar agora</a>
+                <span id="download-ready-name" class="download-ready-name"></span>
+              </div>
             </section>
           </div>
         </form>
@@ -233,6 +238,9 @@
       const progressPercent = document.getElementById("progress-percent");
       const progressFill = document.getElementById("progress-fill");
       const progressNote = document.getElementById("progress-note");
+      const downloadReadyActions = document.getElementById("download-ready-actions");
+      const downloadReadyLink = document.getElementById("download-ready-link");
+      const downloadReadyName = document.getElementById("download-ready-name");
 
       let infoLookupTimer = null;
       let infoController = null;
@@ -424,6 +432,10 @@
         progressPercent.textContent = "0%";
         progressFill.style.width = "0%";
         progressNote.textContent = "A barra acompanha o download e a conversão do arquivo.";
+        downloadReadyActions.hidden = true;
+        downloadReadyLink.href = "#";
+        downloadReadyLink.removeAttribute("download");
+        downloadReadyName.textContent = "";
       }
 
       function updateProgressPanel(progress, message, state = "loading") {
@@ -434,8 +446,15 @@
         progressPercent.textContent = `${clamped}%`;
         progressFill.style.width = `${clamped}%`;
         progressNote.textContent = clamped >= 100
-          ? "Arquivo pronto. O download começa assim que a mídia final estiver disponível."
+          ? "Arquivo pronto. Se o download não começar sozinho, use o botão abaixo."
           : "A barra acompanha o download do arquivo bruto e a conversão final.";
+
+        if (state !== "success") {
+          downloadReadyActions.hidden = true;
+          downloadReadyLink.href = "#";
+          downloadReadyLink.removeAttribute("download");
+          downloadReadyName.textContent = "";
+        }
       }
 
       function abortInfoLookup() {
@@ -455,6 +474,18 @@
         document.body.appendChild(anchor);
         anchor.click();
         anchor.remove();
+      }
+
+      function showReadyDownloadLink(url, filename) {
+        downloadReadyActions.hidden = false;
+        downloadReadyLink.href = url;
+        if (filename) {
+          downloadReadyLink.setAttribute("download", filename);
+          downloadReadyName.textContent = filename;
+        } else {
+          downloadReadyLink.removeAttribute("download");
+          downloadReadyName.textContent = "";
+        }
       }
 
       function stopJobPolling() {
@@ -490,6 +521,7 @@
             btnLabel.textContent = "Baixar";
             const downloadUrl = data.download_url;
             const filename = data.filename;
+            showReadyDownloadLink(downloadUrl, filename);
             stopJobPolling();
             startNativeDownload(downloadUrl, filename);
             return;

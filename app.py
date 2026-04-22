@@ -978,15 +978,15 @@ def download_job_file(job_id: str):
         release_job(job_id)
         return jsonify({"error": "O arquivo nao esta mais disponivel."}), 404
 
-    response = send_file(
+    update_job(job_id, message="Arquivo pronto para baixar.")
+
+    return send_file(
         output_path,
         mimetype=job.get("mimetype") or "application/octet-stream",
         as_attachment=True,
         download_name=job.get("output_name") or output_path.name,
         max_age=0,
     )
-    response.call_on_close(lambda: release_job(job_id))
-    return response
 
 
 if __name__ == "__main__":
