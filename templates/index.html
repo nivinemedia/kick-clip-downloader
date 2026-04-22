@@ -3,146 +3,755 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Kick Clip Downloader</title>
-    <meta
-      name="description"
-      content="Baixe clips publicos da Kick em MP4 H.264 com um link direto."
-    >
+    <title>Nivine Downloader</title>
+    <meta name="description" content="Baixe clips e VODs da Kick, além de vídeos e áudios do YouTube.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   </head>
   <body>
-    <div class="glow glow-left"></div>
-    <div class="glow glow-right"></div>
+    <div class="glow"></div>
 
     <main class="page">
       <section class="hero">
-        <p class="eyebrow">Kick Clip Downloader</p>
-        <h1>Baixe clips da Kick em <span>MP4 H.264</span></h1>
-        <p class="intro">
-          Cole um link publico de clip da Kick e o site prepara um arquivo
-          final em <strong>.mp4</strong> com video em <strong>H.264</strong>.
-        </p>
+        <span class="eyebrow">Kick + YouTube</span>
+        <h1>Nivine <em>Downloader</em></h1>
       </section>
 
       <section class="card">
         <form id="download-form" class="download-form">
-          <label for="url">Link do clip</label>
-          <div class="input-row">
-            <input
-              id="url"
-              name="url"
-              type="url"
-              required
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="https://kick.com/minerva/clips/clip_01KPBW5GKKEC9RSF84E27CHV16"
-            >
-            <button id="submit-button" type="submit">Baixar</button>
+          <div class="fields-stack">
+            <div class="input-row">
+              <input
+                id="url"
+                name="url"
+                type="url"
+                required
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Cole o link da Kick ou do YouTube"
+              >
+              <button id="submit-button" type="submit">
+                <span class="btn-label">Baixar</span>
+              </button>
+            </div>
+
+            <section id="vod-panel" class="option-panel" data-state="idle" hidden>
+              <div class="panel-top">
+                <div>
+                  <span class="panel-kicker">Kick VOD</span>
+                  <p id="vod-meta" class="panel-meta">Cole um link completo de VOD da Kick para liberar a barra.</p>
+                </div>
+
+                <div class="panel-total">
+                  <span>Total</span>
+                  <strong id="vod-total">--:--</strong>
+                </div>
+              </div>
+
+              <div class="summary-grid">
+                <div class="summary-pill">
+                  <span>Início</span>
+                  <strong id="start-display">00:00</strong>
+                </div>
+
+                <div class="summary-pill">
+                  <span>Fim</span>
+                  <strong id="end-display">00:00</strong>
+                </div>
+
+                <div class="summary-pill">
+                  <span>Trecho</span>
+                  <strong id="selection-display">00:00</strong>
+                </div>
+              </div>
+
+              <div class="slider-card">
+                <div class="slider-header">
+                  <span>Arraste as duas agulhas para escolher onde o VOD começa e termina.</span>
+                </div>
+
+                <div class="vod-slider">
+                  <div class="vod-slider-track"></div>
+                  <div id="vod-selection-bar" class="vod-selection-bar"></div>
+                  <input
+                    id="start-slider"
+                    class="timeline-input start"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value="0"
+                    disabled
+                  >
+                  <input
+                    id="end-slider"
+                    class="timeline-input end"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value="100"
+                    disabled
+                  >
+                </div>
+              </div>
+
+              <input id="start-time" name="start_time" type="hidden">
+              <input id="end-time" name="end_time" type="hidden">
+            </section>
+
+            <section id="youtube-panel" class="option-panel" data-state="idle" hidden>
+              <div class="panel-top">
+                <div>
+                  <span class="panel-kicker">YouTube</span>
+                  <p id="youtube-meta" class="panel-meta">Cole um vídeo do YouTube para escolher o formato.</p>
+                </div>
+
+                <div class="panel-total">
+                  <span>Duração</span>
+                  <strong id="youtube-duration">--:--</strong>
+                </div>
+              </div>
+
+              <div class="settings-grid">
+                <div class="setting-card">
+                  <span class="setting-label">Modo</span>
+                  <div class="segmented">
+                    <label class="segmented-option">
+                      <input type="radio" name="youtube-mode" value="video" checked>
+                      <span>Vídeo + áudio</span>
+                    </label>
+                    <label class="segmented-option">
+                      <input type="radio" name="youtube-mode" value="audio">
+                      <span>Só áudio</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div id="video-format-card" class="setting-card">
+                  <span class="setting-label">Formato do vídeo</span>
+                  <label class="select-shell">
+                    <select id="youtube-video-format">
+                      <option value="mp4">MP4 (H.264)</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div id="audio-format-card" class="setting-card" hidden>
+                  <span class="setting-label">Formato do áudio</span>
+                  <label class="select-shell">
+                    <select id="youtube-audio-format">
+                      <option value="mp3">MP3</option>
+                      <option value="wav">WAV</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div id="audio-label-card" class="setting-card setting-card-wide" hidden>
+                  <span class="setting-label">Prefixo do áudio</span>
+                  <div class="segmented segmented-wide">
+                    <label class="segmented-option">
+                      <input type="radio" name="youtube-audio-label" value="none" checked>
+                      <span>Sem prefixo</span>
+                    </label>
+                    <label class="segmented-option">
+                      <input type="radio" name="youtube-audio-label" value="sfx">
+                      <span>[SFX]</span>
+                    </label>
+                    <label class="segmented-option">
+                      <input type="radio" name="youtube-audio-label" value="music">
+                      <span>[MUSIC]</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section id="progress-panel" class="progress-panel" data-state="idle" hidden>
+              <div class="progress-top">
+                <div>
+                  <span class="panel-kicker">Progresso</span>
+                  <p id="progress-message" class="panel-meta">Preparando o download...</p>
+                </div>
+                <strong id="progress-percent" class="progress-percent">0%</strong>
+              </div>
+
+              <div class="progress-track">
+                <div id="progress-fill" class="progress-fill"></div>
+              </div>
+
+              <p id="progress-note" class="progress-note">A barra acompanha o download e a conversão do arquivo.</p>
+            </section>
           </div>
-          <p class="hint">
-            Funciona com clips publicos da Kick. O processamento pode levar alguns segundos.
-          </p>
         </form>
 
-        <div id="status" class="status" data-tone="idle" aria-live="polite">
-          Pronto para receber um link.
-        </div>
-      </section>
+        <p id="helper-text" class="helper-text">
+          Kick clips saem com <code>[CLIP]</code>, VODs da Kick podem ser recortados na barra, e no YouTube você escolhe entre vídeo em <code>MP4 H.264</code> ou áudio em <code>MP3</code>/<code>WAV</code>.
+        </p>
 
-      <section class="grid">
-        <article class="mini-card">
-          <h2>Formato final</h2>
-          <p>Saida em arquivo <strong>.mp4</strong> com encode em <strong>H.264</strong>.</p>
-        </article>
-
-        <article class="mini-card">
-          <h2>Fluxo simples</h2>
-          <p>Colou o link, esperou o processamento e o download comeca no navegador.</p>
-        </article>
-
-        <article class="mini-card">
-          <h2>Escopo</h2>
-          <p>Suporte focado em clips publicos do tipo <code>/clips/clip_...</code>.</p>
-        </article>
+        <div id="status" class="status" data-tone="idle" aria-live="polite"></div>
       </section>
     </main>
 
     <script>
+      const KICK_CLIP_RE = /^https?:\/\/(?:www\.)?kick\.com\/[\w-]+(?:\/clips\/|\/?\?(?:[^#]+&)?clip=)(clip_[\w-]+)(?:[/?#].*)?$/i;
+      const KICK_VOD_RE = /^https?:\/\/(?:www\.)?kick\.com\/[\w-]+\/videos\/([\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12})(?:[/?#].*)?$/i;
+      const YOUTUBE_RE = /^https?:\/\/(?:(?:www|m|music)\.)?youtube\.com\/(?:watch\?.*v=|shorts\/|live\/|embed\/)[\w-]+.*$|^https?:\/\/youtu\.be\/[\w-]+.*$/i;
+
       const form = document.getElementById("download-form");
       const urlInput = document.getElementById("url");
+      const startTimeInput = document.getElementById("start-time");
+      const endTimeInput = document.getElementById("end-time");
       const submitButton = document.getElementById("submit-button");
+      const btnLabel = submitButton.querySelector(".btn-label");
+      const helperText = document.getElementById("helper-text");
       const statusBox = document.getElementById("status");
 
+      const vodPanel = document.getElementById("vod-panel");
+      const vodMeta = document.getElementById("vod-meta");
+      const vodTotal = document.getElementById("vod-total");
+      const startDisplay = document.getElementById("start-display");
+      const endDisplay = document.getElementById("end-display");
+      const selectionDisplay = document.getElementById("selection-display");
+      const startSlider = document.getElementById("start-slider");
+      const endSlider = document.getElementById("end-slider");
+      const selectionBar = document.getElementById("vod-selection-bar");
+
+      const youtubePanel = document.getElementById("youtube-panel");
+      const youtubeMeta = document.getElementById("youtube-meta");
+      const youtubeDuration = document.getElementById("youtube-duration");
+      const youtubeVideoFormat = document.getElementById("youtube-video-format");
+      const youtubeAudioFormat = document.getElementById("youtube-audio-format");
+      const videoFormatCard = document.getElementById("video-format-card");
+      const audioFormatCard = document.getElementById("audio-format-card");
+      const audioLabelCard = document.getElementById("audio-label-card");
+
+      const progressPanel = document.getElementById("progress-panel");
+      const progressMessage = document.getElementById("progress-message");
+      const progressPercent = document.getElementById("progress-percent");
+      const progressFill = document.getElementById("progress-fill");
+      const progressNote = document.getElementById("progress-note");
+
+      let infoLookupTimer = null;
+      let infoController = null;
+      let infoRequestId = 0;
+      let loadedSourceUrl = "";
+      let sourceInfoReady = false;
+      let vodDurationSeconds = 0;
+      let activeJobId = "";
+      let jobPollTimer = null;
+
       function setStatus(message, tone) {
-        statusBox.textContent = message;
+        statusBox.textContent = message || "";
         statusBox.dataset.tone = tone;
       }
 
-      function getFilename(dispositionHeader) {
-        if (!dispositionHeader) {
-          return "kick-clip.mp4";
-        }
-
-        const utf8Match = dispositionHeader.match(/filename\\*=UTF-8''([^;]+)/i);
-        if (utf8Match) {
-          return decodeURIComponent(utf8Match[1]);
-        }
-
-        const plainMatch = dispositionHeader.match(/filename="?([^"]+)"?/i);
-        return plainMatch ? plainMatch[1] : "kick-clip.mp4";
+      function setHelper(content) {
+        helperText.innerHTML = content;
       }
 
-      async function startDownload(blob, filename) {
-        const objectUrl = URL.createObjectURL(blob);
+      function formatSeconds(totalSeconds) {
+        const seconds = Math.max(Math.round(totalSeconds), 0);
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const remainingSeconds = seconds % 60;
+
+        if (hours) {
+          return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
+        }
+
+        return `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
+      }
+
+      function formatSecondsForInput(totalSeconds) {
+        const seconds = Math.max(Math.round(totalSeconds), 0);
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const remainingSeconds = seconds % 60;
+        return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
+      }
+
+      function detectSourceKind(url) {
+        if (KICK_CLIP_RE.test(url)) {
+          return "kick_clip";
+        }
+        if (KICK_VOD_RE.test(url)) {
+          return "kick_vod";
+        }
+        if (YOUTUBE_RE.test(url)) {
+          return "youtube";
+        }
+        return "unknown";
+      }
+
+      function getYoutubeMode() {
+        return document.querySelector('input[name="youtube-mode"]:checked')?.value || "video";
+      }
+
+      function getYoutubeAudioLabel() {
+        return document.querySelector('input[name="youtube-audio-label"]:checked')?.value || "none";
+      }
+
+      function hideVodPanel() {
+        vodDurationSeconds = 0;
+        startTimeInput.value = "";
+        endTimeInput.value = "";
+        startSlider.value = 0;
+        endSlider.value = 100;
+        startSlider.disabled = true;
+        endSlider.disabled = true;
+        selectionBar.style.left = "0%";
+        selectionBar.style.width = "0%";
+        startDisplay.textContent = "00:00";
+        endDisplay.textContent = "00:00";
+        selectionDisplay.textContent = "00:00";
+        vodTotal.textContent = "--:--";
+        vodMeta.textContent = "Cole um link completo de VOD da Kick para liberar a barra.";
+        vodPanel.dataset.state = "idle";
+        vodPanel.hidden = true;
+      }
+
+      function showVodLoading() {
+        hideVodPanel();
+        vodPanel.hidden = false;
+        vodPanel.dataset.state = "loading";
+        vodMeta.textContent = "Lendo a duração do VOD...";
+        setHelper('Quando a duração carregar, arraste as duas agulhas para marcar o começo e o fim do trecho do VOD.');
+      }
+
+      function applySliderState(changedHandle) {
+        if (!vodDurationSeconds) {
+          return;
+        }
+
+        let startValue = Math.max(0, Math.min(Number(startSlider.value), vodDurationSeconds));
+        let endValue = Math.max(0, Math.min(Number(endSlider.value), vodDurationSeconds));
+        const minimumGap = vodDurationSeconds > 1 ? 1 : 0;
+
+        if (endValue - startValue < minimumGap) {
+          if (changedHandle === "start") {
+            startValue = Math.min(startValue, vodDurationSeconds - minimumGap);
+            endValue = Math.min(vodDurationSeconds, startValue + minimumGap);
+          } else {
+            endValue = Math.max(endValue, minimumGap);
+            startValue = Math.max(0, endValue - minimumGap);
+          }
+        }
+
+        startSlider.value = startValue;
+        endSlider.value = endValue;
+        startTimeInput.value = formatSecondsForInput(startValue);
+        endTimeInput.value = formatSecondsForInput(endValue);
+        startDisplay.textContent = formatSeconds(startValue);
+        endDisplay.textContent = formatSeconds(endValue);
+        selectionDisplay.textContent = formatSeconds(endValue - startValue);
+
+        const sliderMax = Math.max(vodDurationSeconds, 1);
+        const startPercent = (startValue / sliderMax) * 100;
+        const endPercent = (endValue / sliderMax) * 100;
+        selectionBar.style.left = `${startPercent}%`;
+        selectionBar.style.width = `${Math.max(endPercent - startPercent, 0)}%`;
+      }
+
+      function populateVodPanel(data, sourceUrl) {
+        loadedSourceUrl = sourceUrl;
+        sourceInfoReady = true;
+        vodDurationSeconds = Math.max(Number(data.duration) || 0, 1);
+        vodPanel.hidden = false;
+        vodPanel.dataset.state = "ready";
+        startSlider.disabled = false;
+        endSlider.disabled = false;
+        startSlider.min = "0";
+        startSlider.max = String(vodDurationSeconds);
+        endSlider.min = "0";
+        endSlider.max = String(vodDurationSeconds);
+        startSlider.value = "0";
+        endSlider.value = String(Math.min(vodDurationSeconds, Math.max(30, Math.min(120, Math.round(vodDurationSeconds * 0.05)))));
+        vodMeta.textContent = `${data.channel} • ${data.title}`;
+        vodTotal.textContent = data.duration_label || formatSeconds(vodDurationSeconds);
+        setHelper('A barra do VOD fica sempre no mesmo tamanho. O trecho escolhido sai em <code>MP4</code> com vídeo em <code>H.264</code>.');
+        applySliderState("end");
+      }
+
+      function hideYoutubePanel() {
+        youtubeMeta.textContent = "Cole um vídeo do YouTube para escolher o formato.";
+        youtubeDuration.textContent = "--:--";
+        youtubePanel.dataset.state = "idle";
+        youtubePanel.hidden = true;
+      }
+
+      function showYoutubeLoading() {
+        hideYoutubePanel();
+        youtubePanel.hidden = false;
+        youtubePanel.dataset.state = "loading";
+        youtubeMeta.textContent = "Lendo os dados do vídeo do YouTube...";
+        setHelper('Quando os dados carregarem, você escolhe se quer vídeo + áudio em <code>MP4 H.264</code> ou só áudio em <code>MP3</code>/<code>WAV</code>.');
+      }
+
+      function syncYoutubeMode() {
+        const audioMode = getYoutubeMode() === "audio";
+        videoFormatCard.hidden = audioMode;
+        audioFormatCard.hidden = !audioMode;
+        audioLabelCard.hidden = !audioMode;
+
+        if (youtubePanel.hidden) {
+          return;
+        }
+
+        if (audioMode) {
+          setHelper('No YouTube, o áudio sai na maior qualidade disponível convertida para <code>MP3</code> ou <code>WAV</code>. Se quiser, o nome pode ganhar o prefixo <code>[SFX]</code> ou <code>[MUSIC]</code>.');
+        } else {
+          setHelper('No YouTube com vídeo, o site baixa na melhor qualidade disponível e entrega em <code>MP4</code> com vídeo em <code>H.264</code>.');
+        }
+      }
+
+      function populateYoutubePanel(data, sourceUrl) {
+        loadedSourceUrl = sourceUrl;
+        sourceInfoReady = true;
+        youtubePanel.hidden = false;
+        youtubePanel.dataset.state = "ready";
+        youtubeMeta.textContent = `${data.channel} • ${data.title}`;
+        youtubeDuration.textContent = data.duration_label || "--:--";
+        syncYoutubeMode();
+      }
+
+      function hideProgressPanel() {
+        progressPanel.hidden = true;
+        progressPanel.dataset.state = "idle";
+        progressMessage.textContent = "Preparando o download...";
+        progressPercent.textContent = "0%";
+        progressFill.style.width = "0%";
+        progressNote.textContent = "A barra acompanha o download e a conversão do arquivo.";
+      }
+
+      function updateProgressPanel(progress, message, state = "loading") {
+        const clamped = Math.max(0, Math.min(Number(progress) || 0, 100));
+        progressPanel.hidden = false;
+        progressPanel.dataset.state = state;
+        progressMessage.textContent = message || "Processando a mídia...";
+        progressPercent.textContent = `${clamped}%`;
+        progressFill.style.width = `${clamped}%`;
+        progressNote.textContent = clamped >= 100
+          ? "Arquivo pronto. O download começa assim que a mídia final estiver disponível."
+          : "A barra acompanha o download do arquivo bruto e a conversão final.";
+      }
+
+      function abortInfoLookup() {
+        window.clearTimeout(infoLookupTimer);
+        if (infoController) {
+          infoController.abort();
+          infoController = null;
+        }
+      }
+
+      function startNativeDownload(url, filename) {
         const anchor = document.createElement("a");
-        anchor.href = objectUrl;
-        anchor.download = filename;
+        anchor.href = url;
+        if (filename) {
+          anchor.download = filename;
+        }
         document.body.appendChild(anchor);
         anchor.click();
         anchor.remove();
-        URL.revokeObjectURL(objectUrl);
       }
+
+      function stopJobPolling() {
+        if (jobPollTimer) {
+          window.clearTimeout(jobPollTimer);
+          jobPollTimer = null;
+        }
+        activeJobId = "";
+      }
+
+      async function pollDownloadJob() {
+        if (!activeJobId) {
+          return;
+        }
+
+        try {
+          const response = await fetch(`/api/jobs/${activeJobId}`);
+          const contentType = response.headers.get("content-type") || "";
+          let data = {};
+
+          if (contentType.includes("application/json")) {
+            data = await response.json();
+          }
+
+          if (!response.ok) {
+            throw new Error(data.error || "Não consegui acompanhar o progresso do download.");
+          }
+
+          if (data.status === "done") {
+            updateProgressPanel(data.progress, data.message, "success");
+            setStatus("Arquivo pronto. O download vai começar agora.", "success");
+            submitButton.disabled = false;
+            btnLabel.textContent = "Baixar";
+            const downloadUrl = data.download_url;
+            const filename = data.filename;
+            stopJobPolling();
+            startNativeDownload(downloadUrl, filename);
+            return;
+          }
+
+          if (data.status === "error") {
+            updateProgressPanel(data.progress || 0, data.error || data.message, "error");
+            setStatus(data.error || data.message || "Falha ao processar a mídia.", "error");
+            submitButton.disabled = false;
+            btnLabel.textContent = "Baixar";
+            stopJobPolling();
+            return;
+          }
+
+          updateProgressPanel(data.progress, data.message, "loading");
+          jobPollTimer = window.setTimeout(pollDownloadJob, 700);
+        } catch (error) {
+          updateProgressPanel(0, error.message || "Falha ao acompanhar o download.", "error");
+          setStatus(error.message || "Falha ao acompanhar o download.", "error");
+          submitButton.disabled = false;
+          btnLabel.textContent = "Baixar";
+          stopJobPolling();
+        }
+      }
+
+      async function loadSourceInfo(url) {
+        const candidate = url.trim();
+        const sourceKind = detectSourceKind(candidate);
+
+        if (!candidate || !["kick_vod", "youtube"].includes(sourceKind)) {
+          abortInfoLookup();
+          return;
+        }
+
+        if (candidate === loadedSourceUrl && sourceInfoReady) {
+          if (sourceKind === "youtube") {
+            youtubePanel.hidden = false;
+            syncYoutubeMode();
+          } else {
+            vodPanel.hidden = false;
+          }
+          return;
+        }
+
+        if (infoController) {
+          infoController.abort();
+        }
+
+        const currentRequestId = ++infoRequestId;
+        infoController = new AbortController();
+        sourceInfoReady = false;
+
+        if (sourceKind === "kick_vod") {
+          showVodLoading();
+          hideYoutubePanel();
+        } else {
+          showYoutubeLoading();
+          hideVodPanel();
+        }
+
+        try {
+          const response = await fetch("/api/media-info", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: candidate }),
+            signal: infoController.signal,
+          });
+
+          const contentType = response.headers.get("content-type") || "";
+          let data = {};
+
+          if (contentType.includes("application/json")) {
+            data = await response.json();
+          }
+
+          if (!response.ok) {
+            throw new Error(data.error || "Não consegui ler os dados da mídia.");
+          }
+
+          if (currentRequestId !== infoRequestId) {
+            return;
+          }
+
+          if (data.platform === "kick" && data.kind === "vod") {
+            populateVodPanel(data, candidate);
+          } else if (data.platform === "youtube") {
+            populateYoutubePanel(data, candidate);
+          }
+        } catch (error) {
+          if (error.name === "AbortError") {
+            return;
+          }
+
+          loadedSourceUrl = "";
+          sourceInfoReady = false;
+          if (sourceKind === "kick_vod") {
+            vodPanel.hidden = false;
+            vodPanel.dataset.state = "error";
+            vodMeta.textContent = error.message || "Não consegui ler esse VOD agora.";
+            vodTotal.textContent = "--:--";
+          } else {
+            youtubePanel.hidden = false;
+            youtubePanel.dataset.state = "error";
+            youtubeMeta.textContent = error.message || "Não consegui ler esse vídeo do YouTube agora.";
+            youtubeDuration.textContent = "--:--";
+          }
+          setHelper('Se o link estiver certo e ainda falhar, tenta colar novamente o endereço completo da mídia.');
+          setStatus(error.message || "Falha ao ler os dados da mídia.", "error");
+        } finally {
+          infoController = null;
+        }
+      }
+
+      function syncSourcePanels(immediate = false) {
+        const url = urlInput.value.trim();
+        const sourceKind = detectSourceKind(url);
+        abortInfoLookup();
+
+        if (!activeJobId && !submitButton.disabled) {
+          hideProgressPanel();
+        }
+
+        if (!url) {
+          loadedSourceUrl = "";
+          sourceInfoReady = false;
+          hideVodPanel();
+          hideYoutubePanel();
+          setHelper('Kick clips saem com <code>[CLIP]</code>, VODs da Kick podem ser recortados na barra, e no YouTube você escolhe entre vídeo em <code>MP4 H.264</code> ou áudio em <code>MP3</code>/<code>WAV</code>.');
+          return;
+        }
+
+        if (sourceKind === "kick_clip") {
+          loadedSourceUrl = "";
+          sourceInfoReady = true;
+          hideVodPanel();
+          hideYoutubePanel();
+          setHelper('Esse link é um clip da Kick. O arquivo final sai com <code>[CLIP]</code> no começo do nome e em <code>MP4 H.264</code>.');
+          return;
+        }
+
+        if (sourceKind === "kick_vod") {
+          hideYoutubePanel();
+          if (immediate) {
+            loadSourceInfo(url);
+          } else {
+            infoLookupTimer = window.setTimeout(() => loadSourceInfo(url), 320);
+          }
+          return;
+        }
+
+        if (sourceKind === "youtube") {
+          hideVodPanel();
+          if (immediate) {
+            loadSourceInfo(url);
+          } else {
+            infoLookupTimer = window.setTimeout(() => loadSourceInfo(url), 320);
+          }
+          return;
+        }
+
+        loadedSourceUrl = "";
+        sourceInfoReady = false;
+        hideVodPanel();
+        hideYoutubePanel();
+        setHelper('Cole um link válido da Kick ou do YouTube para liberar as opções certas de download.');
+      }
+
+      startSlider.addEventListener("input", () => applySliderState("start"));
+      endSlider.addEventListener("input", () => applySliderState("end"));
+      urlInput.addEventListener("input", () => syncSourcePanels(false));
+      urlInput.addEventListener("change", () => syncSourcePanels(true));
+      urlInput.addEventListener("blur", () => syncSourcePanels(true));
+
+      document.querySelectorAll('input[name="youtube-mode"]').forEach((input) => {
+        input.addEventListener("change", () => syncYoutubeMode());
+      });
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
 
         const url = urlInput.value.trim();
+        const sourceKind = detectSourceKind(url);
+
         if (!url) {
-          setStatus("Cole um link de clip da Kick antes de continuar.", "error");
+          setStatus("Cole um link antes de continuar.", "error");
           return;
         }
 
+        if (sourceKind === "unknown") {
+          setStatus("Cole um link válido da Kick ou do YouTube.", "error");
+          return;
+        }
+
+        if (sourceKind === "kick_vod" && (!sourceInfoReady || !startTimeInput.value || !endTimeInput.value)) {
+          setStatus("Espera a duração do VOD carregar e escolha o trecho na barra.", "error");
+          return;
+        }
+
+        if (sourceKind === "youtube" && !sourceInfoReady) {
+          setStatus("Espera os dados do vídeo do YouTube carregarem para escolher o formato.", "error");
+          return;
+        }
+
+        const payload = { url };
+
+        if (sourceKind === "kick_vod") {
+          payload.start_time = startTimeInput.value;
+          payload.end_time = endTimeInput.value;
+        }
+
+        if (sourceKind === "youtube") {
+          const youtubeMode = getYoutubeMode();
+          payload.download_mode = youtubeMode;
+
+          if (youtubeMode === "video") {
+            payload.video_format = youtubeVideoFormat.value;
+          } else {
+            payload.audio_format = youtubeAudioFormat.value;
+            payload.audio_label = getYoutubeAudioLabel();
+          }
+        }
+
+        stopJobPolling();
         submitButton.disabled = true;
-        submitButton.textContent = "Preparando...";
-        setStatus("Baixando o clip da Kick e convertendo para MP4 H.264...", "loading");
+        btnLabel.textContent = "Preparando";
+        updateProgressPanel(0, "Preparando o download...", "loading");
+        setStatus("Montando a tarefa de download...", "loading");
 
         try {
           const response = await fetch("/api/download", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url }),
+            body: JSON.stringify(payload),
           });
 
           const contentType = response.headers.get("content-type") || "";
-          if (!response.ok) {
-            if (contentType.includes("application/json")) {
-              const data = await response.json();
-              throw new Error(data.error || "Nao foi possivel processar o clip.");
-            }
-            throw new Error("Nao foi possivel processar o clip.");
+          let data = {};
+
+          if (contentType.includes("application/json")) {
+            data = await response.json();
           }
 
-          const blob = await response.blob();
-          const filename = getFilename(response.headers.get("content-disposition"));
-          await startDownload(blob, filename);
-          setStatus("Download iniciado. Se o navegador bloqueou, tente novamente.", "success");
+          if (!response.ok) {
+            throw new Error(data.error || "Não foi possível iniciar o download.");
+          }
+
+          activeJobId = data.id;
+          updateProgressPanel(data.progress, data.message || "Download iniciado...", "loading");
+          setStatus("Download em andamento...", "loading");
+          pollDownloadJob();
         } catch (error) {
-          setStatus(error.message || "Falha ao baixar o clip.", "error");
-        } finally {
+          updateProgressPanel(0, error.message || "Falha ao iniciar o download.", "error");
+          setStatus(error.message || "Falha ao iniciar o download.", "error");
           submitButton.disabled = false;
-          submitButton.textContent = "Baixar";
+          btnLabel.textContent = "Baixar";
+          stopJobPolling();
         }
       });
+
+      hideVodPanel();
+      hideYoutubePanel();
+      hideProgressPanel();
     </script>
   </body>
 </html>
