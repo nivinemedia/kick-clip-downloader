@@ -453,12 +453,14 @@ def build_download_progress_hook(job_id: str, message: str, progress_start: int,
 
 
 def get_headers_for_platform(platform: str) -> dict:
-    headers = {"User-Agent": USER_AGENT}
     if platform == "kick":
-        headers["Referer"] = "https://kick.com/"
-    elif platform == "youtube":
-        headers["Referer"] = "https://www.youtube.com/"
-    return headers
+        return {"Referer": "https://kick.com/"}
+    if platform == "youtube":
+        return {
+            "User-Agent": USER_AGENT,
+            "Referer": "https://www.youtube.com/",
+        }
+    return {}
 
 
 def build_ydl_options(source: dict, work_dir: Path | None = None) -> dict:
