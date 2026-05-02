@@ -494,15 +494,6 @@ def build_ydl_options(source: dict, work_dir: Path | None = None) -> dict:
     return ydl_options
 
 
-def is_kick_clip_metadata_error(exc: Exception) -> bool:
-    message = str(exc).lower()
-    return (
-        "kick:clips" in message
-        and "unable to download json metadata" in message
-        and "403" in message
-    )
-
-
 def fetch_kick_clip_play_data(clip_id: str) -> dict:
     request = urllib.request.Request(
         f"https://kick.com/api/v2/clips/{clip_id}/play",
@@ -617,6 +608,9 @@ def download_kick_source(
     end_time: float | None = None,
     job_id: str | None = None,
 ) -> tuple[dict, Path]:
+    if source["kind"] == "clip":
+        return download_kick_clip_via_api(source, work_dir, job_id=job_id)
+
     ydl_options = build_ydl_options(source, work_dir)
     if job_id:
         ydl_options["progress_hooks"] = [
@@ -645,8 +639,6 @@ def download_kick_source(
         with YoutubeDL(ydl_options) as ydl:
             info = ydl.extract_info(source["url"], download=True)
     except Exception as exc:  # pragma: no cover - depends on external service
-        if source["kind"] == "clip" and is_kick_clip_metadata_error(exc):
-            return download_kick_clip_via_api(source, work_dir, job_id=job_id)
         raise DownloadError(f"Nao foi possivel baixar a midia da Kick: {exc}") from exc
 
     return info, locate_downloaded_file(work_dir, info)
