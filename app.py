@@ -8,6 +8,8 @@ import tempfile
 import threading
 import time
 import unicodedata
+import urllib.error
+import urllib.request
 import uuid
 from pathlib import Path
 
@@ -463,6 +465,15 @@ def get_headers_for_platform(platform: str) -> dict:
     return {}
 
 
+def get_kick_api_headers() -> dict:
+    return {
+        "User-Agent": USER_AGENT,
+        "Referer": "https://kick.com/",
+        "Origin": "https://kick.com",
+        "Accept": "application/json, text/plain, */*",
+    }
+
+
 def build_ydl_options(source: dict, work_dir: Path | None = None) -> dict:
     ydl_options = {
         "quiet": True,
@@ -481,6 +492,70 @@ def build_ydl_options(source: dict, work_dir: Path | None = None) -> dict:
             "default": str(work_dir / "%(title)s [%(id)s].%(ext)s"),
         }
     return ydl_options
+
+
+def is_kick_clip_metadata_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return (
+        "kick:clips" in message
+        and "unable to download json metadata" in message
+        and "403" in message
+    )
+
+
+def fetch_kick_clip_play_data(clip_id: str) -> dict:
+    request = urllib.request.Request(
+        f"https://kick.com/api/v2/clips/{clip_id}/play",
+        headers=get_kick_api_headers(),
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError) as exc:
+        raise DownloadError(f"Nao foi possivel consultar o clip da Kick: {exc}") from exc
+
+    clip = payload.get("clip") or {}
+    if not clip.get("clip_url"):
+        raise DownloadError("A Kick nao retornou a URL do clip para download.")
+    return clip
+
+
+def download_kick_clip_via_api(
+    source: dict,
+    work_dir: Path,
+    job_id: str | None = None,
+) -> tuple[dict, Path]:
+    clip = fetch_kick_clip_play_data(source["id"])
+    raw_output_path = work_dir / f"{source['id']}-raw.mp4"
+    duration_seconds = float(clip.get("duration") or 0) or None
+
+    run_ffmpeg(
+        [
+            "-y",
+            "-i",
+            clip["clip_url"],
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a:0?",
+            "-c",
+            "copy",
+            str(raw_output_path),
+        ],
+        job_id=job_id,
+        message="Baixando da Kick...",
+        progress_start=14,
+        progress_end=72,
+        duration_seconds=duration_seconds,
+    )
+
+    return {
+        "id": clip.get("id") or source["id"],
+        "title": clip.get("title") or source["id"],
+        "channel": ((clip.get("channel") or {}).get("slug") if isinstance(clip.get("channel"), dict) else None),
+        "thumbnail": clip.get("thumbnail_url"),
+        "duration": float(clip.get("duration") or 0) or None,
+    }, raw_output_path
 
 
 def fetch_media_metadata(source: dict) -> dict:
@@ -570,6 +645,8 @@ def download_kick_source(
         with YoutubeDL(ydl_options) as ydl:
             info = ydl.extract_info(source["url"], download=True)
     except Exception as exc:  # pragma: no cover - depends on external service
+        if source["kind"] == "clip" and is_kick_clip_metadata_error(exc):
+            return download_kick_clip_via_api(source, work_dir, job_id=job_id)
         raise DownloadError(f"Nao foi possivel baixar a midia da Kick: {exc}") from exc
 
     return info, locate_downloaded_file(work_dir, info)
