@@ -487,6 +487,9 @@ def build_ydl_options(source: dict, work_dir: Path | None = None) -> dict:
         "concurrent_fragment_downloads": 4,
         "http_headers": get_headers_for_platform(source["platform"]),
     }
+    if source["platform"] == "youtube":
+        # Prefer the browser-like networking path when it is available.
+        ydl_options["impersonate"] = ""
     if work_dir is not None:
         ydl_options["outtmpl"] = {
             "default": str(work_dir / "%(title)s [%(id)s].%(ext)s"),
