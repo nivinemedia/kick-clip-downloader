@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -77,6 +78,7 @@ YOUTUBE_TRANSIENT_ERROR_MARKERS = (
     "temporarily unavailable",
     "bad handshake",
 )
+YOUTUBE_INFO_TIMEOUT_SECONDS = 5
 DOWNLOAD_JOBS: dict[str, dict] = {}
 DOWNLOAD_JOBS_LOCK = threading.Lock()
 JOB_TTL_SECONDS = 60 * 60
@@ -350,19 +352,28 @@ def merge_ydl_options(base: dict, extra: dict) -> dict:
 def get_youtube_ydl_fallbacks() -> list[dict]:
     common = {
         "source_address": "0.0.0.0",
-        "socket_timeout": 10,
-        "retries": 2,
-        "fragment_retries": 2,
-        "extractor_retries": 2,
+        "socket_timeout": 5,
+        "retries": 1,
+        "fragment_retries": 1,
+        "extractor_retries": 1,
     }
     return [
-        common,
         merge_ydl_options(
             common,
             {
                 "extractor_args": {
                     "youtube": {
                         "player_client": ["android"],
+                    }
+                },
+            },
+        ),
+        merge_ydl_options(
+            common,
+            {
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["tv"],
                     }
                 },
             },
@@ -387,10 +398,13 @@ def get_youtube_ydl_fallbacks() -> list[dict]:
                 },
             },
         ),
+        common,
     ]
 
 
 def is_transient_youtube_error(exc: Exception) -> bool:
+    if isinstance(exc, TimeoutError):
+        return True
     message = str(exc).lower()
     return any(marker in message for marker in YOUTUBE_TRANSIENT_ERROR_MARKERS)
 
@@ -404,23 +418,59 @@ def build_youtube_error_message(action: str, exc: Exception) -> str:
     return f"Nao foi possivel {action} do YouTube: {exc}"
 
 
-def extract_youtube_info_with_fallbacks(source_url: str, base_options: dict, download: bool) -> dict:
+def extract_youtube_info_once(source_url: str, ydl_options: dict, timeout_seconds: int) -> dict:
+    payload = {
+        "url": source_url,
+        "options": ydl_options,
+    }
+    script = """
+import json
+import sys
+from yt_dlp import YoutubeDL
+
+payload = json.load(sys.stdin)
+with YoutubeDL(payload["options"]) as ydl:
+    info = ydl.extract_info(payload["url"], download=False)
+    sys.stdout.write(json.dumps(ydl.sanitize_info(info)))
+"""
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            input=json.dumps(payload),
+            text=True,
+            capture_output=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise TimeoutError("A leitura dos formatos do YouTube demorou demais.") from exc
+
+    if result.returncode != 0:
+        error_output = result.stderr.strip() or result.stdout.strip() or "Falha ao consultar o YouTube."
+        raise RuntimeError(error_output)
+
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("O YouTube respondeu com dados invalidos.") from exc
+
+
+def extract_youtube_info_with_fallbacks(source_url: str, base_options: dict) -> dict:
     last_error = None
 
-    for index, extra in enumerate(get_youtube_ydl_fallbacks()):
+    for extra in get_youtube_ydl_fallbacks():
         ydl_options = merge_ydl_options(base_options, extra)
-        attempts = 2 if index == 0 else 1
-
-        for attempt in range(1, attempts + 1):
-            try:
-                with YoutubeDL(ydl_options) as ydl:
-                    return ydl.extract_info(source_url, download=download)
-            except Exception as exc:  # pragma: no cover - depends on external service
-                last_error = exc
-                if attempt < attempts and is_transient_youtube_error(exc):
-                    time.sleep(min(attempt, 1))
-                    continue
-                break
+        try:
+            return extract_youtube_info_once(
+                source_url,
+                ydl_options,
+                timeout_seconds=YOUTUBE_INFO_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:  # pragma: no cover - depends on external service
+            last_error = exc
+            if is_transient_youtube_error(exc):
+                continue
+            break
 
     if last_error is None:
         raise RuntimeError("Falha desconhecida ao ler o YouTube.")
@@ -557,7 +607,7 @@ def fetch_media_metadata(source: dict) -> dict:
 
     if source["platform"] == "youtube":
         try:
-            info = extract_youtube_info_with_fallbacks(source["url"], options, download=False)
+            info = extract_youtube_info_with_fallbacks(source["url"], options)
         except Exception as exc:  # pragma: no cover - depends on external service
             raise DownloadError(build_youtube_error_message("ler os dados", exc)) from exc
     else:
@@ -653,12 +703,19 @@ def download_youtube_source(
     preferences: dict,
     job_id: str | None = None,
 ) -> tuple[dict, Path]:
+    metadata_options = build_ydl_options(source)
     base_options = build_ydl_options(source, work_dir)
     if job_id:
         base_options["progress_hooks"] = [
-            build_download_progress_hook(job_id, "Baixando do YouTube...", 10, 72)
+            build_download_progress_hook(job_id, "Baixando do YouTube...", 18, 72)
         ]
     if preferences["download_mode"] == "video":
+        metadata_options.update(
+            {
+                "format": get_youtube_video_selector(),
+                "merge_output_format": "mp4",
+            }
+        )
         base_options.update(
             {
                 "format": get_youtube_video_selector(),
@@ -666,6 +723,11 @@ def download_youtube_source(
             }
         )
     else:
+        metadata_options.update(
+            {
+                "format": "bestaudio/best",
+            }
+        )
         base_options.update(
             {
                 "format": "bestaudio/best",
@@ -673,7 +735,11 @@ def download_youtube_source(
         )
 
     try:
-        info = extract_youtube_info_with_fallbacks(source["url"], base_options, download=True)
+        info = extract_youtube_info_with_fallbacks(source["url"], metadata_options)
+        if job_id:
+            set_job_progress(job_id, 18, "Baixando do YouTube...")
+        with YoutubeDL(base_options) as ydl:
+            info = ydl.process_ie_result(info, download=True)
     except Exception as exc:  # pragma: no cover - depends on external service
         raise DownloadError(build_youtube_error_message("baixar a midia", exc)) from exc
 
