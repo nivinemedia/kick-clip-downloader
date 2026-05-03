@@ -78,7 +78,7 @@ YOUTUBE_TRANSIENT_ERROR_MARKERS = (
     "temporarily unavailable",
     "bad handshake",
 )
-YOUTUBE_INFO_TIMEOUT_SECONDS = 5
+YOUTUBE_INFO_TIMEOUT_SECONDS = 8
 DOWNLOAD_JOBS: dict[str, dict] = {}
 DOWNLOAD_JOBS_LOCK = threading.Lock()
 JOB_TTL_SECONDS = 60 * 60
@@ -364,26 +364,6 @@ def get_youtube_ydl_fallbacks() -> list[dict]:
                 "extractor_args": {
                     "youtube": {
                         "player_client": ["android"],
-                    }
-                },
-            },
-        ),
-        merge_ydl_options(
-            common,
-            {
-                "extractor_args": {
-                    "youtube": {
-                        "player_client": ["tv"],
-                    }
-                },
-            },
-        ),
-        merge_ydl_options(
-            common,
-            {
-                "extractor_args": {
-                    "youtube": {
-                        "player_client": ["ios"],
                     }
                 },
             },
