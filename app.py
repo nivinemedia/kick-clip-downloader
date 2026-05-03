@@ -508,10 +508,7 @@ def get_headers_for_platform(platform: str) -> dict:
     if platform == "kick":
         return {"Referer": "https://kick.com/"}
     if platform == "youtube":
-        return {
-            "User-Agent": USER_AGENT,
-            "Referer": "https://www.youtube.com/",
-        }
+        return {}
     return {}
 
 
